@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare external JSON users to the current Sigma member list."""
+"""Compare external JSON or CSV users to the current Sigma member list."""
 
 from __future__ import annotations
 
@@ -13,9 +13,19 @@ from sigma_api import SigmaClient, SigmaConfig
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Compare external users in JSON format to Sigma members and write a diff report."
+        description="Compare external users in JSON or CSV format to Sigma members and write a diff report.",
+        epilog=(
+            "CSV input supports the Sigma + Active Directory mapping headers: "
+            "SIGMA_USER_EMAIL, SIGMA_ACCOUNT_TYPE, SIGMA_ACCOUNT_STATUS, "
+            "ACTIVE_DIRECTORY_USER_PRINCIPAL_NAME, ACTIVE_DIRECTORY_ENABLED, "
+            "WORKDAY_WORKER_STATUS."
+        ),
     )
-    parser.add_argument("--external-users", required=True, help="Path to external users JSON.")
+    parser.add_argument(
+        "--external-users",
+        required=True,
+        help="Path to external users JSON or CSV.",
+    )
     parser.add_argument(
         "--output",
         default="sigma-user-diff.json",
