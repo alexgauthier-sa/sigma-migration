@@ -1,6 +1,14 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from scripts.diff_users import deduplicate_users, diff_users, group_users_by_email, normalize_user
+from scripts.diff_users import (
+    deduplicate_users,
+    diff_users,
+    group_users_by_email,
+    load_external_users,
+    normalize_user,
+)
 
 
 class DiffUsersTest(unittest.TestCase):
@@ -68,6 +76,37 @@ class DiffUsersTest(unittest.TestCase):
         )
 
         self.assertEqual(len(groups["ada@example.com"]), 2)
+
+    def test_load_external_users_accepts_sigma_ad_mapping_csv(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "users.csv"
+            path.write_text(
+                "\n".join(
+                    [
+                        "SIGMA_USER_EMAIL,SIGMA_ACCOUNT_TYPE,SIGMA_ACCOUNT_STATUS,ACTIVE_DIRECTORY_USER_PRINCIPAL_NAME,ACTIVE_DIRECTORY_ENABLED,WORKDAY_WORKER_STATUS",
+                        "AC.Hassall@ccm.com,essential,TRUE,AC.Hassall@myccmortgage.com,TRUE,Active",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            users = load_external_users(path)
+
+        self.assertEqual(users[0]["email"], "ac.hassall@ccm.com")
+        self.assertEqual(users[0]["memberType"], "essential")
+        self.assertEqual(users[0]["isArchived"], False)
+        self.assertEqual(users[0]["activeDirectoryUserPrincipalName"], "AC.Hassall@myccmortgage.com")
+        self.assertEqual(users[0]["activeDirectoryEnabled"], True)
+        self.assertEqual(users[0]["workdayWorkerStatus"], "Active")
+
+    def test_diff_skips_fields_missing_from_external_user(self):
+        report = diff_users(
+            [{"email": "ada@example.com", "memberType": "Creator"}],
+            [{"email": "ada@example.com", "firstName": "Ada", "lastName": "Lovelace", "memberType": "Creator"}],
+        )
+
+        self.assertEqual(report.summary["changed"], 0)
 
 
 if __name__ == "__main__":

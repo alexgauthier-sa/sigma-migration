@@ -20,13 +20,25 @@ DEFAULT_COMPARE_FIELDS = (
 )
 
 FIELD_ALIASES = {
-    "email": ("email", "Email", "mail", "userName", "username"),
+    "email": ("email", "Email", "mail", "userName", "username", "SIGMA_USER_EMAIL"),
     "firstName": ("firstName", "first_name", "First Name", "givenName", "given_name"),
     "lastName": ("lastName", "last_name", "Last Name", "familyName", "family_name"),
-    "memberType": ("memberType", "member_type", "accountType", "account_type"),
+    "memberType": (
+        "memberType",
+        "member_type",
+        "accountType",
+        "account_type",
+        "SIGMA_ACCOUNT_TYPE",
+    ),
     "userKind": ("userKind", "user_kind", "kind"),
     "isArchived": ("isArchived", "is_archived", "archived"),
     "isInactive": ("isInactive", "is_inactive", "inactive"),
+    "activeDirectoryUserPrincipalName": (
+        "activeDirectoryUserPrincipalName",
+        "ACTIVE_DIRECTORY_USER_PRINCIPAL_NAME",
+    ),
+    "activeDirectoryEnabled": ("activeDirectoryEnabled", "ACTIVE_DIRECTORY_ENABLED"),
+    "workdayWorkerStatus": ("workdayWorkerStatus", "WORKDAY_WORKER_STATUS"),
 }
 
 
@@ -41,7 +53,11 @@ class UserDiff:
 
 
 def load_external_users(path: str | Path) -> list[dict[str, Any]]:
-    with Path(path).open("r", encoding="utf-8") as handle:
+    input_path = Path(path)
+    if input_path.suffix.lower() == ".csv":
+        return load_external_users_csv(input_path)
+
+    with input_path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
     if isinstance(payload, list):
@@ -55,6 +71,14 @@ def load_external_users(path: str | Path) -> list[dict[str, Any]]:
         raise ValueError("Every external user entry must be a JSON object")
 
     return [normalize_user(user) for user in users]
+
+
+def load_external_users_csv(path: str | Path) -> list[dict[str, Any]]:
+    with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            raise ValueError("External users CSV must include a header row")
+        return [normalize_user(row) for row in reader if _has_values(row)]
 
 
 def deduplicate_users(
@@ -117,6 +141,8 @@ def diff_users(
         sigma_user = sigma_by_email[email]
         field_changes = {}
         for field in fields:
+            if field not in external_user:
+                continue
             external_value = external_user.get(field)
             sigma_value = sigma_user.get(field)
             if _canonical_value(external_value) != _canonical_value(sigma_value):
@@ -155,11 +181,13 @@ def diff_users(
 
 
 def normalize_user(user: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(user)
+    normalized = {key: value for key, value in user.items() if value != ""}
     for canonical, aliases in FIELD_ALIASES.items():
         value = _lookup(user, aliases)
-        if value is not None:
+        if value not in (None, ""):
             normalized[canonical] = value
+
+    _normalize_sigma_ad_mapping_fields(normalized)
 
     email = normalized.get("email")
     if not isinstance(email, str) or not email.strip():
@@ -237,6 +265,38 @@ def _lookup(user: dict[str, Any], aliases: tuple[str, ...]) -> Any:
     for alias in aliases:
         if alias in user:
             return user[alias]
+    return None
+
+
+def _has_values(row: dict[str, Any]) -> bool:
+    return any(value not in (None, "") for value in row.values())
+
+
+def _normalize_sigma_ad_mapping_fields(user: dict[str, Any]) -> None:
+    if "SIGMA_ACCOUNT_STATUS" in user and "isArchived" not in user:
+        active = _coerce_bool(user["SIGMA_ACCOUNT_STATUS"])
+        if active is not None:
+            user["isArchived"] = not active
+
+    if "activeDirectoryEnabled" in user:
+        enabled = _coerce_bool(user["activeDirectoryEnabled"])
+        if enabled is not None:
+            user["activeDirectoryEnabled"] = enabled
+
+    if "memberType" in user and isinstance(user["memberType"], str):
+        user["memberType"] = user["memberType"].strip()
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"true", "t", "yes", "y", "1", "active", "enabled"}:
+        return True
+    if normalized in {"false", "f", "no", "n", "0", "inactive", "disabled"}:
+        return False
     return None
 
 

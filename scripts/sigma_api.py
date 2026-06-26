@@ -115,6 +115,59 @@ class SigmaClient:
 
         return members
 
+    def list_teams(self, *, limit: int = 1000) -> list[dict[str, Any]]:
+        return self._list_paginated("/v2/teams", {"limit": str(limit)})
+
+    def list_workbooks(
+        self,
+        *,
+        is_archived: bool | None = False,
+        exclude_explorations: bool = False,
+        skip_permission_check: bool = False,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        params = {
+            "limit": str(limit),
+            "excludeExplorations": str(exclude_explorations).lower(),
+            "skipPermissionCheck": str(skip_permission_check).lower(),
+        }
+        if is_archived is not None:
+            params["isArchived"] = str(is_archived).lower()
+        return self._list_paginated(
+            "/v2/workbooks",
+            params,
+        )
+
+    def list_data_models(
+        self,
+        *,
+        skip_permission_check: bool = False,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        return self._list_paginated(
+            "/v2/dataModels",
+            {
+                "limit": str(limit),
+                "skipPermissionCheck": str(skip_permission_check).lower(),
+            },
+        )
+
+    def list_grants(
+        self,
+        *,
+        inode_id: str,
+        direct_grants_only: bool = False,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        return self._list_paginated(
+            "/v2/grants",
+            {
+                "limit": str(limit),
+                "inodeId": inode_id,
+                "directGrantsOnly": str(direct_grants_only).lower(),
+            },
+        )
+
     def create_member(self, user: dict[str, Any], *, send_invite: bool = True) -> dict[str, Any]:
         params = {"sendInvite": str(send_invite).lower()}
         payload: dict[str, Any] = {
@@ -141,6 +194,33 @@ class SigmaClient:
 
     def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
         return self._request_json("DELETE", path, params=params)
+
+    def _list_paginated(self, path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        page: str | None = None
+
+        while True:
+            request_params = dict(params)
+            if page:
+                request_params["page"] = page
+            response = self.get(path, request_params)
+            if isinstance(response, list):
+                entries.extend(response)
+                break
+            if not isinstance(response, dict):
+                raise SigmaApiError(f"Unexpected {path} response shape")
+
+            page_entries = response.get("entries", [])
+            if not isinstance(page_entries, list):
+                raise SigmaApiError(f"Unexpected {path} entries shape")
+            entries.extend(page_entries)
+
+            next_page = response.get("nextPage")
+            if not next_page:
+                break
+            page = str(next_page)
+
+        return entries
 
     def _request_json(
         self,
