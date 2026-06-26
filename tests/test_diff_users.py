@@ -1,0 +1,54 @@
+import unittest
+
+from scripts.diff_users import diff_users, normalize_user
+
+
+class DiffUsersTest(unittest.TestCase):
+    def test_normalize_user_accepts_common_aliases(self):
+        user = normalize_user(
+            {
+                "Email": " ADA@EXAMPLE.COM ",
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "account_type": "Creator",
+            }
+        )
+
+        self.assertEqual(user["email"], "ada@example.com")
+        self.assertEqual(user["firstName"], "Ada")
+        self.assertEqual(user["lastName"], "Lovelace")
+        self.assertEqual(user["memberType"], "Creator")
+
+    def test_diff_reports_missing_extra_and_changed_users(self):
+        external = [
+            {"email": "ada@example.com", "firstName": "Ada", "lastName": "Lovelace", "memberType": "Creator"},
+            {"email": "grace@example.com", "firstName": "Grace", "lastName": "Hopper", "memberType": "Viewer"},
+        ]
+        sigma = [
+            {"email": "ada@example.com", "firstName": "Ada", "lastName": "Byron", "memberType": "Creator"},
+            {"email": "alan@example.com", "firstName": "Alan", "lastName": "Turing", "memberType": "Creator"},
+        ]
+
+        report = diff_users(external, sigma)
+
+        self.assertEqual(report.summary["matched_users"], 1)
+        self.assertEqual(report.summary["missing_in_sigma"], 1)
+        self.assertEqual(report.summary["extra_in_sigma"], 1)
+        self.assertEqual(report.summary["changed"], 1)
+        self.assertEqual(report.missing_in_sigma[0]["email"], "grace@example.com")
+        self.assertEqual(report.extra_in_sigma[0]["email"], "alan@example.com")
+        self.assertEqual(report.changed[0]["differences"]["lastName"]["external"], "Lovelace")
+        self.assertEqual(report.changed[0]["differences"]["lastName"]["sigma"], "Byron")
+
+    def test_duplicate_emails_are_reported(self):
+        report = diff_users(
+            [{"email": "ada@example.com"}, {"email": "ADA@example.com"}],
+            [{"email": "ada@example.com"}],
+        )
+
+        self.assertEqual(report.duplicate_external_emails, ["ada@example.com"])
+        self.assertEqual(report.summary["duplicate_external_emails"], 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

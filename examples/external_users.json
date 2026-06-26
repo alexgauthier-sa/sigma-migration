@@ -1,0 +1,16 @@
+[
+  {
+    "email": "ada@example.com",
+    "firstName": "Ada",
+    "lastName": "Lovelace",
+    "memberType": "Creator",
+    "userKind": "internal"
+  },
+  {
+    "email": "grace@example.com",
+    "first_name": "Grace",
+    "last_name": "Hopper",
+    "member_type": "Viewer",
+    "user_kind": "internal"
+  }
+]
