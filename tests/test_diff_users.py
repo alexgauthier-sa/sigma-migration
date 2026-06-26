@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.diff_users import diff_users, normalize_user
+from scripts.diff_users import deduplicate_users, diff_users, group_users_by_email, normalize_user
 
 
 class DiffUsersTest(unittest.TestCase):
@@ -48,6 +48,26 @@ class DiffUsersTest(unittest.TestCase):
 
         self.assertEqual(report.duplicate_external_emails, ["ada@example.com"])
         self.assertEqual(report.summary["duplicate_external_emails"], 1)
+
+    def test_deduplicate_users_can_keep_last(self):
+        deduped, duplicates = deduplicate_users(
+            [
+                {"email": "ada@example.com", "firstName": "Ada"},
+                {"email": "ADA@example.com", "firstName": "Augusta"},
+            ],
+            keep="last",
+        )
+
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["firstName"], "Augusta")
+        self.assertEqual(list(duplicates), ["ada@example.com"])
+
+    def test_group_users_by_email_normalizes_email(self):
+        groups = group_users_by_email(
+            [{"email": " ADA@example.com "}, {"Email": "ada@EXAMPLE.com"}]
+        )
+
+        self.assertEqual(len(groups["ada@example.com"]), 2)
 
 
 if __name__ == "__main__":

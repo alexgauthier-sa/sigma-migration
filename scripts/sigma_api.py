@@ -115,18 +115,57 @@ class SigmaClient:
 
         return members
 
+    def create_member(self, user: dict[str, Any], *, send_invite: bool = True) -> dict[str, Any]:
+        params = {"sendInvite": str(send_invite).lower()}
+        payload: dict[str, Any] = {
+            "email": user["email"],
+            "firstName": user["firstName"],
+            "lastName": user["lastName"],
+        }
+        for field in ("memberType", "isGuest", "userKind", "addToTeams"):
+            if field in user and user[field] is not None:
+                payload[field] = user[field]
+        response = self.post("/v2/members", payload, params)
+        if not isinstance(response, dict):
+            raise SigmaApiError("Unexpected create member response shape")
+        return response
+
+    def deactivate_member(self, member_id: str) -> None:
+        self.delete(f"/v2/members/{urllib.parse.quote(member_id, safe='')}")
+
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return self._request_json("GET", path, params=params)
+
+    def post(self, path: str, body: dict[str, Any], params: dict[str, Any] | None = None) -> Any:
+        return self._request_json("POST", path, params=params, body=body)
+
+    def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return self._request_json("DELETE", path, params=params)
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> Any:
         query = urllib.parse.urlencode(params or {})
         url = f"{self.base_url}{path}"
         if query:
             url = f"{url}?{query}"
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {
+            "Authorization": f"Bearer {self.get_access_token()}",
+            "Accept": "application/json",
+        }
+        if body is not None:
+            headers["Content-Type"] = "application/json"
         request = urllib.request.Request(
             url,
-            headers={
-                "Authorization": f"Bearer {self.get_access_token()}",
-                "Accept": "application/json",
-            },
-            method="GET",
+            data=data,
+            headers=headers,
+            method=method,
         )
         return self._open_json(request)
 

@@ -57,6 +57,43 @@ def load_external_users(path: str | Path) -> list[dict[str, Any]]:
     return [normalize_user(user) for user in users]
 
 
+def deduplicate_users(
+    users: Iterable[dict[str, Any]],
+    *,
+    keep: str = "first",
+) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    if keep not in {"first", "last"}:
+        raise ValueError("keep must be 'first' or 'last'")
+
+    normalized = [normalize_user(user) for user in users]
+    groups = group_users_by_email(normalized)
+    deduped: list[dict[str, Any]] = []
+    duplicates: dict[str, list[dict[str, Any]]] = {}
+    email_order = list(dict.fromkeys(user["email"] for user in normalized))
+
+    for email in email_order:
+        entries = groups[email]
+        if len(entries) > 1:
+            duplicates[email] = entries
+        deduped.append(entries[0] if keep == "first" else entries[-1])
+
+    return deduped, duplicates
+
+
+def group_users_by_email(users: Iterable[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for user in users:
+        normalized = normalize_user(user)
+        groups.setdefault(normalized["email"], []).append(normalized)
+    return groups
+
+
+def write_users_json(path: str | Path, users: Iterable[dict[str, Any]]) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(list(users), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def diff_users(
     external_users: Iterable[dict[str, Any]],
     sigma_users: Iterable[dict[str, Any]],
